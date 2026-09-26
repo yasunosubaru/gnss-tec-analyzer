@@ -16,7 +16,10 @@ env:
 
 jobs:
   build:
-    runs-on: windows-2022
+    # 必须用 windows-2025（Server 2025 / build 26100）。
+    # windows-2022 是 Server 2022（build 17763），低于本应用要求的
+    # Windows 10 19041+，进程会既不启动也不退出的挂住。
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
 
@@ -24,6 +27,34 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+
+      # unpackaged WinUI 3 应用靠 bootstrapper 找 Windows App SDK 运行时。
+      # 托管 runner 镜像里不一定有，缺了会弹安装对话框并挂死。
+      # 装不上不算失败（继续往下走），但会留下明确记录。
+      - name: Ensure Windows App SDK runtime
+        shell: pwsh
+        run: |
+          $url = "https://aka.ms/windowsappsdk/1.8/latest/windowsappruntimeinstall-x64.exe"
+          $msi = "$env:TEMP\WindowsAppRuntimeInstall.msix"
+          $ok = $false
+          try {
+            Invoke-WebRequest -Uri $url -OutFile $msi -UseBasicParsing -TimeoutSec 180
+            Add-AppxPackage -Path $msi -ErrorAction Stop
+            "已安装 Windows App SDK 运行时 (MSIX)"
+            $ok = $true
+          } catch {
+            "MSIX 安装未成功: $($_.Exception.Message)"
+          }
+          if (-not $ok) {
+            try {
+              $exe = "$env:TEMP\WindowsAppRuntimeInstall.exe"
+              Invoke-WebRequest -Uri $url -OutFile $exe -UseBasicParsing -TimeoutSec 180
+              Start-Process -FilePath $exe -ArgumentList "--quiet" -Wait
+              "已安装 Windows App SDK 运行时 (exe)"
+            } catch {
+              "运行时安装失败，继续执行；若后续自测超时即为此原因: $($_.Exception.Message)"
+            }
+          }
 
       - name: Restore
         run: dotnet restore "$env:PROJ" -p:Platform=x64
@@ -37,33 +68,39 @@ jobs:
           --self-contained false -o out/publish --no-restore
 
       # 冒烟测试：不带数据跑 --selftest，验证可执行文件能启动、参数被正确解析、
-      # 且在缺数据时给出明确错误而不是崩溃。
+      # 且在缺数据时给出明确错误而不是崩溃或挂死。
       #
       # 本项目**不合成样本数据**：TEC 需要成对的 L1+L2 伪距/载波相位，
       # 星座与信号码编码在 status 位域里，要造出物理量级正确的 TEC 值必须
       # 先确认 Adr 字段的准确语义。与其放一个会产出误导性 TEC 数字的假样本，
       # 不如不放。逐字节对拍需自行提供真实 BFN 数据，见 README §4.1。
+      #
+      # 用 Start-Process -PassThru 拿 ExitCode 而不是 $LASTEXITCODE：WinExe
+      # （GUI 子系统）在 pwsh 里 $LASTEXITCODE 实测可能为 $null。
+      # 必须自己等超时：缺运行时/缺显示环境时进程会挂死而非返回。
       - name: Smoke test (no data)
         shell: pwsh
         run: |
-          # 用 Start-Process -PassThru 拿 ExitCode，而不是 $LASTEXITCODE：
-          # 本项目是 WinExe（GUI 子系统），$LASTEXITCODE 实测可能为 $null，
-          # 而 $null -ne 0 为真，会导致每次都误判失败。
           $exe = "out/publish/GnssTec.exe"
           if (-not (Test-Path $exe)) { throw "找不到 $exe" }
           $log = "out/smoke.txt"
           $p = Start-Process -FilePath $exe `
                -ArgumentList @("--selftest", "0", "nonexistent.bin", "out") `
-               -NoNewWindow -Wait -PassThru `
+               -NoNewWindow -PassThru `
                -RedirectStandardOutput $log -RedirectStandardError "out/smoke.err"
-          "exit code: $($p.ExitCode)"
-          if (-not (Test-Path $log) -or (Get-Item $log).Length -eq 0) {
-            "stdout 为空，改看 stderr:"
-            if (Test-Path "out/smoke.err") { Get-Content "out/smoke.err" -TotalCount 20 }
-          } else {
-            Get-Content $log -TotalCount 10
+          if (-not $p.WaitForExit(120000)) {
+            try { $p.Kill() } catch {}
+            "自测超时 120s。已输出："
+            if (Test-Path $log) { Get-Content $log -TotalCount 20 }
+            throw "selftest 120s 未退出（多为缺 Windows App SDK 运行时）"
           }
-          # 缺数据时应返回非 0（明确错误），而不是 0（假装成功）或崩溃
+          "exit code: $($p.ExitCode)"
+          if (Test-Path $log) { Get-Content $log -TotalCount 10 }
+          if (Test-Path "out/smoke.err") {
+            $e = Get-Content "out/smoke.err" -TotalCount 5
+            if ($e) { "stderr:"; $e }
+          }
+          # 缺数据时应返回非 0（明确错误），而不是 0（假装成功）或挂死
           if ($p.ExitCode -eq 0) { throw "缺数据时不应返回 0" }
 
       - name: Package
