@@ -1,0 +1,64 @@
+# ---- .NET / MSBuild ----
+bin/
+obj/
+[Bb]uild/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+project.lock.json
+project.fragment.lock.json
+artifacts/
+TestResults/
+*.binlog
+*.log
+
+# ---- 发布产物（由 GitHub Release 分发，不进版本库）----
+dist/
+publish/
+out/
+*.zip
+
+# ---- Visual Studio ----
+.vs/
+.vscode/*
+!.vscode/extensions.json
+*.VC.db
+*.psess
+*.vsp
+
+# ---- 数据文件（真实数据集最小 1.2 MB，大的 395 MB，不进仓库）----
+*.gps
+*.bin
+*.obs
+*.rnx
+samples/*
+!samples/.gitkeep
+
+# ---- 原始 PySide6 参考实现（课程作业代码，著作权归原作者，不随本仓库分发）----
+reference/
+pyside6/
+
+# ---- 某次误操作产生的垃圾目录（内含真实站点坐标，绝不可入库）----
+# 起因是命令行里 "--" 之后跟了输出路径，shell 把它当成了目录名 "-"
+# 里面的 bestpos_avg.txt 含真实监测站经纬度。
+/-/
+**/-/
+
+# ---- 运行时产物 ----
+crash-*.log
+startup-error.log
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# ---- 临时/测试输出 ----
+tmp/
+screenshots/

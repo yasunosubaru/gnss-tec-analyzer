@@ -1,0 +1,33 @@
+# 默认：文本文件在仓库内统一存 LF，检出时按平台转换
+* text=auto eol=lf
+
+# 二进制：绝不能做行尾/编码转换
+*.png binary
+*.ico binary
+*.jpg binary
+*.gif binary
+*.pdf binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.gps binary
+*.bin binary
+*.obs binary
+*.rnx binary
+
+# Windows 专有脚本
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# C# / XAML / 工程文件：保持 LF
+*.cs      text eol=lf
+*.xaml   text eol=lf
+*.csproj text eol=lf
+*.props  text eol=lf
+*.targets text eol=lf
+*.manifest text eol=lf
+*.config text eol=lf
+
+# 注意：以上 *.cs / *.xaml 等文件的 **UTF-8 BOM 是构建必需的**
+# （见 README §5：缺 BOM 时 csc 会按 GBK 解码，中文注释字节被误判，
+#   报出位置完全无关的 CS1056「意外字符」）。git 不会剥离 BOM。

@@ -1,0 +1,148 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="GnssTec.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:local="using:GnssTec.App">
+
+    <Grid x:Name="RootGrid" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 自绘标题栏拖拽区 -->
+        <Grid x:Name="TitleBarArea" Grid.Row="0" Height="40">
+            <TextBlock x:Name="TitleText"
+                       Text="GNSS 数据分析工具 · 电离层 TEC"
+                       Margin="16,0,0,0"
+                       VerticalAlignment="Center"
+                       Style="{StaticResource CaptionTextBlockStyle}" />
+        </Grid>
+
+        <!-- 配置区（固定高度，不参与拉伸） -->
+        <StackPanel Grid.Row="1" Margin="16,0,16,0" Spacing="10">
+
+            <muxc:Expander Header="文件设置" IsExpanded="True"
+                           HorizontalAlignment="Stretch"
+                           HorizontalContentAlignment="Stretch">
+                <Grid ColumnSpacing="8" RowSpacing="8" Padding="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="输入文件:"
+                               VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBox x:Name="InputPathBox" Grid.Row="0" Grid.Column="1"
+                             HorizontalAlignment="Stretch"
+                             PlaceholderText="选择 BFN 二进制数据文件（.bin / .gps）..." />
+                    <Button x:Name="BrowseInputButton" Grid.Row="0" Grid.Column="2"
+                            Content="浏览..." Click="OnBrowseInput" MinWidth="88" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="输出目录:"
+                               VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBox x:Name="OutputDirBox" Grid.Row="1" Grid.Column="1"
+                             HorizontalAlignment="Stretch"
+                             PlaceholderText="选择输出目录..." />
+                    <Button x:Name="BrowseOutputButton" Grid.Row="1" Grid.Column="2"
+                            Content="浏览..." Click="OnBrowseOutput" MinWidth="88" />
+                </Grid>
+            </muxc:Expander>
+
+            <muxc:Expander Header="模式选择" IsExpanded="True"
+                           HorizontalAlignment="Stretch"
+                           HorizontalContentAlignment="Stretch">
+                <StackPanel Spacing="6" Padding="0,8,0,0">
+                    <RadioButton x:Name="Mode0Radio" GroupName="WorkMode"
+                                 Content="模式 0：计算 BESTPOS 平均位置（经度 / 纬度 / 高度）"
+                                 Checked="OnModeChanged" />
+                    <RadioButton x:Name="Mode1Radio" GroupName="WorkMode"
+                                 Content="模式 1：TEC 分析（指定卫星，计算电离层总电子含量）"
+                                 Checked="OnModeChanged" />
+                    <RadioButton x:Name="Mode2Radio" GroupName="WorkMode"
+                                 Content="模式 2：批量导出原始观测数据（不含 TEC 计算）"
+                                 Checked="OnModeChanged" />
+                </StackPanel>
+            </muxc:Expander>
+
+            <muxc:Expander Header="卫星参数" IsExpanded="True"
+                           HorizontalAlignment="Stretch"
+                           HorizontalContentAlignment="Stretch">
+                <StackPanel Spacing="8" Padding="0,8,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="卫星系统:" VerticalAlignment="Center" />
+                        <ComboBox x:Name="SysCombo" MinWidth="170" SelectedIndex="0">
+                            <ComboBoxItem Content="GPS" />
+                            <ComboBoxItem Content="BeiDou (BDS)" />
+                        </ComboBox>
+                        <TextBlock Text="卫星 ID:" VerticalAlignment="Center" Margin="16,0,0,0" />
+                        <muxc:NumberBox x:Name="SatIdBox" Value="1" Minimum="1" Maximum="200"
+                                        SpinButtonPlacementMode="Compact" MinWidth="120" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="ID 范围:" VerticalAlignment="Center" />
+                        <muxc:NumberBox x:Name="IdStartBox" Value="1" Minimum="1" Maximum="200"
+                                        SpinButtonPlacementMode="Compact" MinWidth="120" />
+                        <TextBlock Text="~" VerticalAlignment="Center" />
+                        <muxc:NumberBox x:Name="IdEndBox" Value="32" Minimum="1" Maximum="200"
+                                        SpinButtonPlacementMode="Compact" MinWidth="120" />
+                    </StackPanel>
+                </StackPanel>
+            </muxc:Expander>
+
+            <!-- 操作按钮 -->
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button x:Name="RunButton" Content="▶ 开始处理" Click="OnRun"
+                        MinHeight="36" MinWidth="140"
+                        Background="#FF4CAF50" Foreground="White"
+                        FontWeight="SemiBold" CornerRadius="4" />
+                <Button x:Name="StopButton" Content="■ 停止" Click="OnStop"
+                        MinHeight="36" MinWidth="120" IsEnabled="False"
+                        Background="#FFF44336" Foreground="White"
+                        FontWeight="SemiBold" CornerRadius="4" />
+                <Button x:Name="OpenOutputButton" Content="打开输出目录" Click="OnOpenOutput"
+                        MinHeight="36" IsEnabled="False" />
+            </StackPanel>
+
+            <!-- 进度 -->
+            <StackPanel Spacing="4">
+                <muxc:ProgressBar x:Name="Progress" Minimum="0" Maximum="100" Value="0" />
+                <TextBlock x:Name="ProgressText" Text="就绪"
+                           Style="{StaticResource CaptionTextBlockStyle}" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- 输出日志：占据剩余全部空间 -->
+        <muxc:Expander Grid.Row="2" Header="输出日志" IsExpanded="True"
+                       Margin="16,10,16,8"
+                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                       HorizontalContentAlignment="Stretch"
+                       VerticalContentAlignment="Stretch">
+            <TextBox x:Name="LogBox" IsReadOnly="True" AcceptsReturn="True"
+                     TextWrapping="NoWrap"
+                     FontFamily="Consolas" FontSize="12"
+                     Background="#FF1E1E1E" Foreground="#FFD4D4D4"
+                     MinHeight="160" Margin="0,8,0,0"
+                     VerticalAlignment="Stretch"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+        </muxc:Expander>
+
+        <!-- 状态栏 -->
+        <Border Grid.Row="3" Padding="16,4,16,8"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+            <TextBlock x:Name="StatusText" Text="就绪"
+                       Style="{StaticResource CaptionTextBlockStyle}" />
+        </Border>
+    </Grid>
+</Window>

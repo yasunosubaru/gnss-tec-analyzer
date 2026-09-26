@@ -1,0 +1,104 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PROJ: src/GnssTec.App/GnssTec.App.csproj
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore "$env:PROJ" -p:Platform=x64
+
+      - name: Build
+        run: dotnet build "$env:PROJ" -c Release -p:Platform=x64 --no-restore
+
+      - name: Publish
+        run: >
+          dotnet publish "$env:PROJ" -c Release -p:Platform=x64 -r win-x64
+          --self-contained false -o out/publish --no-restore
+
+      # 冒烟测试：不带数据跑 --selftest，验证可执行文件能启动、参数被正确解析、
+      # 且在缺数据时给出明确错误而不是崩溃。
+      #
+      # 本项目**不合成样本数据**：TEC 需要成对的 L1+L2 伪距/载波相位，
+      # 星座与信号码编码在 status 位域里，要造出物理量级正确的 TEC 值必须
+      # 先确认 Adr 字段的准确语义。与其放一个会产出误导性 TEC 数字的假样本，
+      # 不如不放。逐字节对拍需自行提供真实 BFN 数据，见 README §4.1。
+      - name: Smoke test (no data)
+        shell: pwsh
+        run: |
+          # 用 Start-Process -PassThru 拿 ExitCode，而不是 $LASTEXITCODE：
+          # 本项目是 WinExe（GUI 子系统），$LASTEXITCODE 实测可能为 $null，
+          # 而 $null -ne 0 为真，会导致每次都误判失败。
+          $exe = "out/publish/GnssTec.exe"
+          if (-not (Test-Path $exe)) { throw "找不到 $exe" }
+          $log = "out/smoke.txt"
+          $p = Start-Process -FilePath $exe `
+               -ArgumentList @("--selftest", "0", "nonexistent.bin", "out") `
+               -NoNewWindow -Wait -PassThru `
+               -RedirectStandardOutput $log -RedirectStandardError "out/smoke.err"
+          "exit code: $($p.ExitCode)"
+          if (-not (Test-Path $log) -or (Get-Item $log).Length -eq 0) {
+            "stdout 为空，改看 stderr:"
+            if (Test-Path "out/smoke.err") { Get-Content "out/smoke.err" -TotalCount 20 }
+          } else {
+            Get-Content $log -TotalCount 10
+          }
+          # 缺数据时应返回非 0（明确错误），而不是 0（假装成功）或崩溃
+          if ($p.ExitCode -eq 0) { throw "缺数据时不应返回 0" }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ver = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:GITHUB_REF_NAME } else { 'dev' }
+          $stage = "out/GnssTec-$ver"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item out/publish/* $stage -Recurse -Force
+          Copy-Item README.md, LICENSE, nuget.config $stage
+          Compress-Archive -Path "$stage/*" -DestinationPath "out/GnssTec-$ver.zip" -Force
+          Get-ChildItem out -Filter *.zip | ForEach-Object {
+            "{0}  {1:N1} MB" -f $_.Name, ($_.Length / 1MB)
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GnssTec-win-x64
+          path: out/*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: GnssTec-win-x64
+          path: out
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.zip
+          generate_release_notes: true
